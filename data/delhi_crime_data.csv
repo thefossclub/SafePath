@@ -1,0 +1,5 @@
+type,latitude,longitude,severity,description
+flood,40.7128,-74.0060,8,Heavy flooding reported
+fire,40.7135,-74.0012,6,Building fire affecting nearby streets
+police,40.7101,-74.0035,4,Police activity—avoid area
+
