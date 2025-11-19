@@ -1,4 +1,4 @@
-# safepath/utils/safety_astar.py
+# Model/utils/safety_astar.py
 import heapq
 from .safety_graph import haversine
 

@@ -1,4 +1,4 @@
-# safepath/utils/osrm_client.py
+# Model/utils/osrm_client.py
 import requests
 
 OSRM_URL = "http://router.project-osrm.org/route/v1/driving"

@@ -1,4 +1,4 @@
-# safepath/utils/deepseek_client.py
+# Model/utils/deepseek_client.py
 import os
 import requests
 import json

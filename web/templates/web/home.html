@@ -35,7 +35,7 @@
 <div class="info-panel" id="info">
     <div><strong>SafePath</strong></div>
     <div class="control-row">
-        <button id="use-default" class="btn">Use default destination</button>
+        <!-- <button id="use-default" class="btn">Use default destination</button> -->
         <button id="clear" class="btn">Clear</button>
     </div>
     <div>
@@ -58,8 +58,10 @@
         attribution: "&copy; OpenStreetMap contributors",
     }).addTo(map);
 
-    let userMarker = null;
-    let destMarker = null;
+    let clickCount = 0;
+    let userMarker = null;   // start
+    let destMarker = null;   // destination
+
     let originalLayer = null;
     let safeLayer = null;
 
@@ -77,117 +79,122 @@
         setStatus("Location acquired.");
     }
 
-    // Geolocation
-    // Fallback starting location
     const fallback_start = [28.474780644693578, 77.47638190820159];
+    setStatus("Requesting location...");
 
     if (navigator.geolocation) {
-        setStatus("Requesting location...");
-        navigator.geolocation.getCurrentPosition(
-            (pos) => {
-                setUserLocation(pos.coords.latitude, pos.coords.longitude);
-            },
-            (err) => {
-                console.warn("geolocation error", err);
-                setStatus("Using default starting location.");
-                setUserLocation(fallback_start[0], fallback_start[1]);
-            },
-            { enableHighAccuracy: true },
-        );
+
+    navigator.geolocation.getCurrentPosition(
+        pos => {
+            setUserLocation(pos.coords.latitude, pos.coords.longitude);
+            clickCount = 1;  // geolocation acts as first click
+        },
+        err => {
+            console.warn("geolocation error", err);
+            setStatus("Using default starting location.");
+            setUserLocation(fallback_start[0], fallback_start[1]);
+            clickCount = 1;
+        },
+            { enableHighAccuracy: true }
+    );
     } else {
-        setStatus(
-            "Geolocation not supported. Using default starting location.",
-        );
-        setUserLocation(FALLBACK_START[0], FALLBACK_START[1]);
+        setStatus("Geolocation not supported. Using default starting location.");
+        setUserLocation(fallback_start[0], fallback_start[1]);
+        clickCount = 1;
     }
 
-    // Map click
-    map.on("click", async function (e) {
-        const destLat = e.latlng.lat;
-        const destLon = e.latlng.lng;
+    // CLEAR BUTTON
+    document.getElementById('clear').addEventListener('click', function () {
+        if (originalLayer) map.removeLayer(originalLayer);
+        if (safeLayer) map.removeLayer(safeLayer);
+        if (userMarker) map.removeLayer(userMarker);
+        if (destMarker) map.removeLayer(destMarker);
 
-        if (destMarker) destMarker.setLatLng(e.latlng);
-        else destMarker = L.marker(e.latlng).addTo(map);
+        originalLayer = null;
+        safeLayer = null;
+        userMarker = null;
+        destMarker = null;
 
-        let startLat, startLon;
-        if (userMarker) {
-            const p = userMarker.getLatLng();
-            startLat = p.lat;
-            startLon = p.lng;
-        } else {
-            startLat = destLat - 0.005;
-            startLon = destLon - 0.005;
-            setUserLocation(startLat, startLon);
-        }
+        clickCount = 0;
 
-        await requestSafeRouteAndDraw(startLat, startLon, destLat, destLon);
+        statsEl.innerHTML = '';
+        setStatus("Cleared. Click map to choose start, then destination.");
     });
 
-    // Default destination
-    document
-        .getElementById("use-default")
-        .addEventListener("click", async function () {
-            const defaultDest = [28.6205, 77.2208];
-            if (!userMarker) {
-                setStatus("No user location — click map first.");
-                return;
-            }
-            const p = userMarker.getLatLng();
-            await requestSafeRouteAndDraw(
-                p.lat,
-                p.lng,
-                defaultDest[0],
-                defaultDest[1],
-            );
+    // MAP CLICK HANDLER
+    map.on('click', async function (e) {
+    clickCount++;
 
-            if (destMarker) destMarker.setLatLng(defaultDest);
-            else destMarker = L.marker(defaultDest).addTo(map);
-        });
+    // FIRST CLICK → START
+    if (clickCount === 1) {
+        userMarker = L.marker(e.latlng, { title: "Start" }).addTo(map);
+        setStatus("Start selected. Now click destination.");
+        return;
+    }
 
-    // Clear
-    document.getElementById("clear").addEventListener("click", function () {
-        if (originalLayer) {
-            map.removeLayer(originalLayer);
-            originalLayer = null;
-        }
-        if (safeLayer) {
-            map.removeLayer(safeLayer);
-            safeLayer = null;
-        }
+    // SECOND CLICK → DESTINATION + ROUTE
+    if (clickCount === 2) {
+        destMarker = L.marker(e.latlng, { title: "Destination" }).addTo(map);
+        setStatus("Destination selected. Fetching safe route…");
+
+        await requestSafeRouteAndDraw(
+        userMarker.getLatLng().lat,
+        userMarker.getLatLng().lng,
+        destMarker.getLatLng().lat,
+        destMarker.getLatLng().lng
+        );
+
+        return;
+    }
+
+    // THIRD CLICK → RESET + NEW START
+    if (clickCount >= 3) {
+        if (originalLayer) map.removeLayer(originalLayer);
+        if (safeLayer) map.removeLayer(safeLayer);
+        if (userMarker) map.removeLayer(userMarker);
+        if (destMarker) map.removeLayer(destMarker);
+
+        originalLayer = null;
+        safeLayer = null;
+        userMarker = null;
+        destMarker = null;
+
+        clickCount = 1; 
+        userMarker = L.marker(e.latlng, { title: "Start" }).addTo(map);
+
         statsEl.innerHTML = "";
-        setStatus("Cleared.");
+        setStatus("Restarted. Start selected — click destination.");
+        return;
+    }
     });
 
+    
+    // SAFE ROUTE DRAW
     async function requestSafeRouteAndDraw(startLat, startLon, endLat, endLon) {
-        setStatus("Fetching routes...");
-        const url = `${SAFE_ROUTE_URL}?start_lat=${startLat}&start_lon=${startLon}&end_lat=${endLat}&end_lon=${endLon}`;
-        try {
-            const res = await fetch(url);
-            if (!res.ok) throw new Error("Server error " + res.status);
-            const data = await res.json();
 
-            if (originalLayer) map.removeLayer(originalLayer);
-            originalLayer = L.polyline(
-                data.original_route.map((p) => [p[0], p[1]]),
-                {
-                    weight: 6,
-                    opacity: 0.5,
-                },
-            ).addTo(map);
+    setStatus("Fetching routes...");
+    const url = `${SAFE_ROUTE_URL}?start_lat=${startLat}&start_lon=${startLon}&end_lat=${endLat}&end_lon=${endLon}`;
 
-            if (safeLayer) map.removeLayer(safeLayer);
-            safeLayer = L.polyline(
-                data.safe_path.map((p) => [p[0], p[1]]),
-                {
-                    weight: 6,
-                    opacity: 1,
-                },
-            ).addTo(map);
+    try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("Server error " + res.status);
 
-            const allPoints = data.original_route
-                .concat(data.safe_path)
-                .map((p) => [p[0], p[1]]);
-            map.fitBounds(allPoints, { padding: [40, 40] });
+        const data = await res.json();
+
+        if (originalLayer) map.removeLayer(originalLayer);
+        originalLayer = L.polyline(data.original_route.map(p => [p[0], p[1]]), {
+        weight: 6,
+        opacity: 0.0
+        }).addTo(map);
+
+        if (safeLayer) map.removeLayer(safeLayer);
+        safeLayer = L.polyline(data.safe_path.map(p => [p[0], p[1]]), {
+        weight: 6,
+        opacity: 1
+        }).addTo(map);
+
+        const allPoints = data.original_route.concat(data.safe_path).map(p => [p[0], p[1]]);
+        map.fitBounds(allPoints, { padding: [40, 40] });
 
             statsEl.innerHTML = "";
             const li = (txt) => {
@@ -204,12 +211,14 @@
                 li(`Avg segment risk: ${Number(data.avg_risk).toFixed(3)}`),
             );
 
-            setStatus("Route rendered. Original = gray, safe = green.");
-        } catch (err) {
-            console.error(err);
-            setStatus("Error: " + err.message);
-        }
+
+        setStatus("Route rendered. Original = gray, safe = green.");
+
+    } catch (err) {
+        console.error(err);
+        setStatus("Error: " + err.message);
     }
+}
 </script>
 
 {% endblock %}
