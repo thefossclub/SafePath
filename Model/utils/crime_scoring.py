@@ -1,4 +1,4 @@
-# safepath/utils/crime_scoring.py
+# Model/utils/crime_scoring.py
 import pandas as pd
 
 from .deepseek_client import rate_segment_risk

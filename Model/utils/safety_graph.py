@@ -1,4 +1,4 @@
-# safepath/utils/safety_graph.py
+# Model/utils/safety_graph.py
 from collections import defaultdict
 import math
 
